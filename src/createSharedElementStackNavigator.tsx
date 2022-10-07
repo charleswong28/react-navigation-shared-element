@@ -183,7 +183,7 @@ export default function createSharedElementStackNavigator<
     typeof SharedElementStackNavigator
   >(SharedElementStackNavigator);
 
-  const { Navigator, Screen } = navigatorFactory<ParamList>();
+  const { Navigator, Screen, Group } = navigatorFactory<ParamList>();
 
   type ScreenProps<RouteName extends keyof ParamList> = Omit<
     RouteConfig<
@@ -213,6 +213,15 @@ export default function createSharedElementStackNavigator<
   }
 
   type NavigatorProps = React.ComponentProps<typeof Navigator>;
+  type GroupProps = React.ComponentProps<typeof Group>;
+
+
+  // Wrapping Screen to explicitly statically type a "Shared Element" Screen.
+  function wrapGroup(props: GroupProps) {
+    return (
+      <Group {...props} />
+    );
+  }
 
   function getSharedElementsChildrenProps(children: React.ReactNode) {
     return React.Children.toArray(children).reduce<any[]>((acc, child) => {
@@ -294,5 +303,6 @@ export default function createSharedElementStackNavigator<
   return {
     Navigator: WrapNavigator,
     Screen: wrapScreen,
+    Group: wrapGroup,
   };
 }
