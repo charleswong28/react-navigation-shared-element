@@ -226,7 +226,7 @@ export default function createSharedElementStackNavigator<
   function getSharedElementsChildrenProps(children: React.ReactNode) {
     return React.Children.toArray(children).reduce<any[]>((acc, child) => {
       if (React.isValidElement(child)) {
-        if (child.type === wrapScreen) {
+        if (child.type === wrapScreen || child.type === wrapGroup) {
           acc.push(child.props);
         }
 
@@ -243,59 +243,80 @@ export default function createSharedElementStackNavigator<
   function WrapNavigator(props: NavigatorProps) {
     const { children, ...restProps } = props;
     const wrappedComponentsCache = React.useRef<Map<string, any>>(new Map());
-    const screenChildrenProps = getSharedElementsChildrenProps(children);
+    const renderScreen = React.useCallback(({
+      component,
+      name,
+      sharedElements,
+      sharedElementsConfig,
+      ...restChildrenProps
+    }) => {
+      sharedElements = sharedElements || sharedElementsConfig;
+
+      // Show warning when deprecated `sharedElementsConfig` prop was used
+      if (sharedElementsConfig) {
+        console.warn(
+          "The `sharedElementsConfig` prop has been renamed, use `sharedElements` instead."
+        );
+      }
+  
+      // Check whether this component was previously already wrapped
+      let wrappedComponent = wrappedComponentsCache.current.get(name);
+      if (
+        !wrappedComponent ||
+        wrappedComponent.config.Component !== component
+      ) {
+        // Wrap the component
+        wrappedComponent = createSharedElementScene(
+          component,
+          sharedElements,
+          rendererDataProxy,
+          emitter,
+          CardAnimationContext,
+          navigatorId,
+          debug
+        );
+        wrappedComponentsCache.current.set(name, wrappedComponent);
+      } else {
+        // Shared elements function might have been changed, so update it
+        wrappedComponent.config.sharedElements = sharedElements;
+      }
+  
+      return (
+        <Screen
+          key={name}
+          name={name}
+          component={wrappedComponent}
+          {...restChildrenProps}
+        />
+      );
+    }, [wrappedComponentsCache]);
+
+    const renderChildren = React.useCallback((thisChildren) => {
+      return React.Children.toArray(thisChildren).map<any[]>((child) => {
+        if (React.isValidElement(child)) {
+          if (child.type === wrapScreen) {
+            return renderScreen(child);
+          }
+
+          if (child.type === wrapGroup) {
+            const { children: groupChildren, ...restGroupProps } = child.props;
+            return (
+              <Group {...restGroupProps}>
+                {renderChildren(child.props.children)}
+              </Group>
+            );
+          }
+  
+          if (child.type === React.Fragment) {
+            return renderChildren(child.props.children);
+          }
+        }
+      });
+    }, [renderScreen]);
 
     return (
       <Navigator {...restProps}>
-        {screenChildrenProps.map(
-          ({
-            component,
-            name,
-            sharedElements,
-            sharedElementsConfig,
-            ...restChildrenProps
-          }) => {
-            sharedElements = sharedElements || sharedElementsConfig;
-
-            // Show warning when deprecated `sharedElementsConfig` prop was used
-            if (sharedElementsConfig) {
-              console.warn(
-                "The `sharedElementsConfig` prop has been renamed, use `sharedElements` instead."
-              );
-            }
-
-            // Check whether this component was previously already wrapped
-            let wrappedComponent = wrappedComponentsCache.current.get(name);
-            if (
-              !wrappedComponent ||
-              wrappedComponent.config.Component !== component
-            ) {
-              // Wrap the component
-              wrappedComponent = createSharedElementScene(
-                component,
-                sharedElements,
-                rendererDataProxy,
-                emitter,
-                CardAnimationContext,
-                navigatorId,
-                debug
-              );
-              wrappedComponentsCache.current.set(name, wrappedComponent);
-            } else {
-              // Shared elements function might have been changed, so update it
-              wrappedComponent.config.sharedElements = sharedElements;
-            }
-
-            return (
-              <Screen
-                key={name}
-                name={name}
-                component={wrappedComponent}
-                {...restChildrenProps}
-              />
-            );
-          }
-        )}
+        {renderChildren(children)}
       </Navigator>
     );
   }
